@@ -39,6 +39,17 @@ body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px
 h1{font-family:var(--display);font-weight:700;font-size:34px;letter-spacing:.01em;margin:0;text-transform:uppercase}
 .label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .presets{display:flex;gap:8px;flex-wrap:wrap}
+.setcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:10px}
+.sethead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sethead b{font-family:var(--display);font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.kinds{display:flex;gap:6px;flex-wrap:wrap}
+.kinds .chip{padding:6px 11px;font-size:13px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mini-f{display:flex;flex-direction:column;gap:4px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px}
+.mini-f .label{font-size:10px;letter-spacing:.02em;line-height:1.25;min-height:2.5em}
+.mini-f .row{gap:2px}
+.mini-f .step{width:30px;height:32px;font-size:17px;border-radius:6px}
+.mini-f .val{font-size:22px;height:32px;line-height:32px}
 .chip{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:7px 13px;font:500 13px var(--body);cursor:pointer}
 .chip:focus-visible,.step:focus-visible,.big:focus-visible,.ctl:focus-visible{outline:2px solid var(--work);outline-offset:2px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -170,25 +181,33 @@ ol.segs li.done{opacity:.45}
   </section>
 
   <details id="manual">
-  <summary>Eigenes Intervall einstellen</summary>
+  <summary>Eigenes Programm einstellen</summary>
   <div style="display:flex;flex-direction:column;gap:18px;margin-top:14px">
 
   <div style="display:flex;flex-direction:column;gap:8px">
     <span class="label">Vorlagen</span>
     <div class="presets">
-      <button class="chip" data-p="start">Einstieg 3/6 × 8</button>
-      <button class="chip" data-p="halten">Halten 5/5 × 10</button>
-      <button class="chip" data-p="lang">Lang 10/10 × 8</button>
-      <button class="chip" data-p="schnell">Schnell 1/2 × 10</button>
+      <button class="chip" data-p="start">Einstieg</button>
+      <button class="chip" data-p="halten">Halten</button>
+      <button class="chip" data-p="lang">Lang halten</button>
+      <button class="chip" data-p="schnell">Schnell</button>
+      <button class="chip" data-p="atmung">Nur Atmung</button>
+      <button class="chip" data-p="kombi">Atmung + Kombi</button>
     </div>
   </div>
 
   <div class="grid" id="fields"></div>
 
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span class="label">Sätze</span>
+    <span class="note" style="margin:0">Pro Satz wählen: Anspannen, Atmen oder beides. Zeiten in Sekunden.</span>
+    <div id="sets" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button class="mini" id="addSet" style="align-self:flex-start;padding:8px 14px">+ Satz hinzufügen</button>
+  </div>
+
   <div class="opt">
     <label><input type="checkbox" id="optSound" checked> Töne</label>
     <label><input type="checkbox" id="optVib" checked> Vibration</label>
-    <label><input type="checkbox" id="optLastRest"> Entspannen nach letzter Wiederholung</label>
   </div>
 
   <div class="summary">
@@ -268,25 +287,30 @@ ol.segs li.done{opacity:.45}
 
 <script>
 const FIELDS=[
-  {k:'prep',  l:'Vorbereitung', t:'time', c:'--prep',    step:5,  min:0},
-  {k:'work',  l:'Anspannen',    t:'time', c:'--work',    step:1,  min:1},
-  {k:'rest',  l:'Entspannen',   t:'time', c:'--rest',    step:1,  min:1},
-  {k:'rounds',l:'Wiederholungen',t:'num', c:null,        step:1,  min:1},
-  {k:'sets',  l:'Sätze',        t:'num',  c:null,        step:1,  min:1},
-  {k:'setRest',l:'Satzpause',   t:'time', c:'--setrest', step:15, min:0},
+  {k:'prep',  l:'Vorbereitung', c:'--prep',    step:5,  min:0},
+  {k:'setRest',l:'Satzpause',   c:'--setrest', step:5,  min:0},
 ];
+const KIND={
+  anspannen:{t:'Anspannen',a:'Anspannen',b:'Entspannen',ca:'--work',cb:'--rest',h:'Nach innen-oben ziehen, normal weiteratmen'},
+  atmen:{t:'Atmen',a:'Einatmen',b:'Ausatmen',ca:'--setrest',cb:'--rest',h:'Ruhig in den Bauch atmen, Beckenboden bleibt locker'},
+  beides:{t:'Beides',a:'Aus + anspannen',b:'Ein + lösen',ca:'--work',cb:'--setrest',h:'Einatmen und lösen, beim Ausatmen anspannen'},
+};
+const A=(k,a,b,reps)=>({k,a,b,reps});
 const PRESETS={
-  start:{prep:10,work:3,rest:6,rounds:8,sets:3,setRest:45},
-  halten:{prep:10,work:5,rest:5,rounds:10,sets:3,setRest:45},
-  lang:{prep:10,work:10,rest:10,rounds:8,sets:2,setRest:60},
-  schnell:{prep:10,work:1,rest:2,rounds:10,sets:3,setRest:30},
+  start:{prep:10,setRest:45,sets:[A('anspannen',3,6,8),A('anspannen',3,6,8),A('anspannen',3,6,8)]},
+  halten:{prep:10,setRest:45,sets:[A('anspannen',5,5,10),A('anspannen',5,5,10),A('anspannen',5,5,10)]},
+  lang:{prep:10,setRest:60,sets:[A('anspannen',10,10,8),A('anspannen',10,10,8)]},
+  schnell:{prep:10,setRest:30,sets:[A('anspannen',1,2,10),A('anspannen',1,2,10),A('anspannen',1,2,10)]},
+  atmung:{prep:10,setRest:30,sets:[A('atmen',4,6,8),A('atmen',4,6,8)]},
+  kombi:{prep:10,setRest:30,sets:[A('atmen',4,6,5),A('anspannen',5,5,10),A('beides',5,4,8)]},
 };
 const NAMES={prep:'Vorbereitung',work:'Anspannen',rest:'Entspannen',setrest:'Satzpause',inhale:'Einatmen',exhale:'Ausatmen',release:'Lösen'};
 const COLORS={prep:'--prep',work:'--work',rest:'--rest',setrest:'--setrest',inhale:'--setrest',exhale:'--rest',release:'--rest'};
-let cfg={...PRESETS.halten};
-try{const s=JSON.parse(localStorage.getItem('bbtimer-cfg'));if(s&&s.work)cfg={...cfg,...s};}catch(e){}
-for(const k in PRESETS.halten){if(!Number.isFinite(cfg[k]))cfg[k]=PRESETS.halten[k]}
-let workout=null;
+const clone=o=>JSON.parse(JSON.stringify(o));
+let custom=clone(PRESETS.kombi);
+try{const c=JSON.parse(localStorage.getItem('bbtimer-custom'));if(c&&Array.isArray(c.sets)&&c.sets.length)custom=c}catch(e){}
+let cfg={work:0,rest:0,rounds:0,sets:0,setRest:0};
+let workout=null,surprise=null;
 
 const $=id=>document.getElementById(id);
 const fmt=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
@@ -294,74 +318,87 @@ const fmt=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor
 const fmtS=s=>s<60?String(Math.max(0,Math.ceil(s))):fmt(s);
 const parse=v=>{v=String(v).trim();if(v.includes(':')){const [m,s]=v.split(':');return (+m||0)*60+(+s||0)}return +v||0};
 
-function buildFields(){
-  $('fields').innerHTML=FIELDS.map(f=>`
-    <div class="field">
-      <span class="label">${f.c?`<span class="dot" style="background:var(${f.c})"></span>`:''}${f.l}</span>
-      <div class="row">
-        <button class="step" data-k="${f.k}" data-d="-1" aria-label="${f.l} verringern">−</button>
-        <input class="val" id="in-${f.k}" data-k="${f.k}" inputmode="${f.t==='time'?'text':'numeric'}" aria-label="${f.l}">
-        <button class="step" data-k="${f.k}" data-d="1" aria-label="${f.l} erhöhen">+</button>
-      </div>
-    </div>`).join('');
+function setToBlock(st,i){
+  const K=KIND[st.k]||KIND.anspannen;
+  const base={n:`Satz ${i+1} · ${K.t}`,h:K.h,pos:`Satz ${i+1}`,t:K.t,reps:st.reps};
+  if(st.k==='atmen')return {...base,steps:[{t:'inhale',d:st.a,l:'Einatmen'},{t:'exhale',d:st.b,l:'Ausatmen'}],rest:0,desc:`${st.a} s ein, ${st.b} s aus × ${st.reps}`};
+  if(st.k==='beides')return {...base,steps:[{t:'inhale',d:st.b,l:'Einatmen · lösen'},{t:'work',d:st.a,l:'Ausatmen · anspannen'}],rest:0,desc:`${st.b} s einatmen und lösen, ${st.a} s ausatmen und anspannen × ${st.reps}`};
+  return {...base,work:st.a,rest:st.b,desc:`${st.a} s an / ${st.b} s aus × ${st.reps}`};
 }
-function syncInputs(){FIELDS.forEach(f=>{$('in-'+f.k).value=f.t==='time'?fmt(cfg[f.k]):cfg[f.k]})}
+function customWorkout(){return {title:'Eigenes Programm',custom:true,prep:custom.prep,setRest:custom.setRest,blocks:custom.sets.map(setToBlock)}}
 
-function segments(){
-  const out=[];const lastRest=$('optLastRest').checked;
-  if(workout&&workout.blocks){
-    const B=workout.blocks;out.push({type:'prep',dur:15,round:0,set:1,reps:B[0].reps,sets:B.length});
-    B.forEach((b,bi)=>{const s=bi+1;
-      for(let r=1;r<=b.reps;r++){
-        const steps=b.steps||[{t:'work',d:b.work},{t:'rest',d:b.rest}];
-        steps.forEach((st,si)=>{
-          if(!b.steps&&r===b.reps&&si===steps.length-1)return;
-          out.push({type:st.t,dur:st.d,label:st.l,round:r,set:s,reps:b.reps,sets:B.length,ex:b});
-        });
-        if(b.steps&&b.rest&&r<b.reps)out.push({type:'rest',dur:b.rest,round:r,set:s,reps:b.reps,sets:B.length,ex:b});
-      }
-      if(s<B.length)out.push({type:'setrest',dur:workout.setRest,round:b.reps,set:s,reps:b.reps,sets:B.length});
-    });
-    return out;
-  }
-  if(cfg.prep>0)out.push({type:'prep',dur:cfg.prep,round:0,set:1});
-  for(let s=1;s<=cfg.sets;s++){
-    for(let r=1;r<=cfg.rounds;r++){
-      out.push({type:'work',dur:cfg.work,round:r,set:s,ex:null});
-      const last=r===cfg.rounds;
-      if(cfg.rest>0&&(!last||(lastRest&&s===cfg.sets)))out.push({type:'rest',dur:cfg.rest,round:r,set:s});
+function stepper(id,label,val,color,extra){return `<div class="${extra||'field'}">
+      <span class="label">${color?`<span class="dot" style="background:var(${color})"></span>`:''}${label}</span>
+      <div class="row">
+        <button class="step" data-f="${id}" data-d="-1" aria-label="${label} verringern">−</button>
+        <input class="val" id="in-${id}" data-f="${id}" inputmode="numeric" value="${val}" aria-label="${label}">
+        <button class="step" data-f="${id}" data-d="1" aria-label="${label} erhöhen">+</button>
+      </div></div>`}
+function buildFields(){
+  $('fields').innerHTML=FIELDS.map(f=>stepper(f.k,f.l+' (s)',custom[f.k],f.c)).join('');
+  $('sets').innerHTML=custom.sets.map((st,i)=>{const K=KIND[st.k];return `<div class="setcard">
+    <div class="sethead"><b>Satz ${i+1}</b>
+      ${custom.sets.length>1?`<button class="mini danger" data-rmset="${i}" aria-label="Satz ${i+1} entfernen">Entfernen</button>`:''}</div>
+    <div class="kinds">${Object.entries(KIND).map(([k,v])=>`<button class="chip" data-set="${i}" data-kind="${k}" aria-pressed="${st.k===k}">${v.t}</button>`).join('')}</div>
+    <div class="grid3">${stepper(`s${i}a`,K.a,st.a,K.ca,'mini-f')}${stepper(`s${i}b`,K.b,st.b,K.cb,'mini-f')}${stepper(`s${i}r`,'Wdh.',st.reps,null,'mini-f')}</div>
+  </div>`}).join('');
+}
+function setField(f,v){
+  if(f==='prep'||f==='setRest'){custom[f]=Math.max(0,v);return}
+  const m=f.match(/^s(\d+)([abr])$/);if(!m)return;const st=custom.sets[+m[1]];if(!st)return;
+  if(m[2]==='r')st.reps=Math.max(1,Math.min(50,v));else st[m[2]]=Math.max(1,Math.min(120,v));
+}
+function getField(f){if(f==='prep'||f==='setRest')return custom[f];const m=f.match(/^s(\d+)([abr])$/);const st=custom.sets[+m[1]];return m[2]==='r'?st.reps:st[m[2]]}
+
+function segments(w){
+  const out=[];if(!w||!w.blocks||!w.blocks.length)return out;
+  const B=w.blocks,prep=w.prep??15;
+  if(prep>0)out.push({type:'prep',dur:prep,round:0,set:1,reps:B[0].reps,sets:B.length});
+  B.forEach((b,bi)=>{const s=bi+1;
+    for(let r=1;r<=b.reps;r++){
+      const steps=b.steps||[{t:'work',d:b.work},{t:'rest',d:b.rest}];
+      steps.forEach((st,si)=>{
+        if(!b.steps&&r===b.reps&&si===steps.length-1)return;
+        if(st.d>0)out.push({type:st.t,dur:st.d,label:st.l,round:r,set:s,reps:b.reps,sets:B.length,ex:b});
+      });
+      if(b.steps&&b.rest&&r<b.reps)out.push({type:'rest',dur:b.rest,round:r,set:s,reps:b.reps,sets:B.length,ex:b});
     }
-    if(s<cfg.sets&&cfg.setRest>0)out.push({type:'setrest',dur:cfg.setRest,round:cfg.rounds,set:s});
-  }
+    if(s<B.length&&w.setRest>0)out.push({type:'setrest',dur:w.setRest,round:b.reps,set:s,reps:b.reps,sets:B.length});
+  });
   return out;
 }
 function bandHTML(segs,cur=-1){
   const tot=segs.reduce((a,b)=>a+b.dur,0)||1;
   return segs.map((s,i)=>`<span style="flex:${s.dur/tot} 0 0;background:var(${COLORS[s.type]});opacity:${cur<0||i>=cur?1:.3}"></span>`).join('');
 }
-function render(){
-  const segs=segments();const tot=segs.reduce((a,b)=>a+b.dur,0);
-  $('total').textContent=fmt(tot);
-  $('band').innerHTML=bandHTML(segs);
-  const sums={};segs.forEach(s=>sums[s.type]=(sums[s.type]||0)+s.dur);
-  $('legend').innerHTML=Object.keys(sums).map(t=>`<span><i style="background:var(${COLORS[t]})"></i>${NAMES[t]} ${fmt(sums[t])}</span>`).join('');
+function renderSegList(segs){
   $('segCount').textContent=segs.length;
   let acc=0;
   $('segList').innerHTML=segs.map((s,i)=>{const st=acc;acc+=s.dur;
     const lbl=s.type==='prep'?NAMES.prep:s.type==='setrest'?`Satzpause nach Satz ${s.set}`:`${s.label||NAMES[s.type]} · Satz ${s.set}, Wdh. ${s.round}`;
     return `<li data-i="${i}"><span><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:var(${COLORS[s.type]})"></span>${lbl}</span><span class="t">${fmt(st)} – ${fmt(acc)} · ${fmt(s.dur)}</span></li>`}).join('');
-  try{localStorage.setItem('bbtimer-cfg',JSON.stringify(cfg))}catch(e){}
+}
+function render(){
+  const segs=segments(customWorkout());const tot=segs.reduce((a,b)=>a+b.dur,0);
+  $('total').textContent=fmt(tot);
+  $('band').innerHTML=bandHTML(segs);
+  const sums={};segs.forEach(s=>sums[s.type]=(sums[s.type]||0)+s.dur);
+  $('legend').innerHTML=Object.keys(sums).map(t=>`<span><i style="background:var(${COLORS[t]})"></i>${NAMES[t]} ${fmt(sums[t])}</span>`).join('');
+  renderSegList(segs);
+  try{localStorage.setItem('bbtimer-custom',JSON.stringify(custom))}catch(e){}
 }
 
-buildFields();syncInputs();render();
-document.addEventListener('click',e=>{
-  const b=e.target.closest('.step');if(b){const f=FIELDS.find(x=>x.k===b.dataset.k);
-    cfg[f.k]=Math.max(f.min,cfg[f.k]+f.step*(+b.dataset.d));clearWorkout();syncInputs();render();}
-  const p=e.target.closest('.chip[data-p]');if(p){cfg={...PRESETS[p.dataset.p]};clearWorkout();syncInputs();render();}
+buildFields();render();
+$('manual').addEventListener('click',e=>{
+  const b=e.target.closest('.step');if(b){const f=b.dataset.f;const big=(f==='setRest'||f==='prep')?5:1;
+    setField(f,getField(f)+big*(+b.dataset.d));$('in-'+f).value=getField(f);render();return}
+  const p=e.target.closest('.chip[data-p]');if(p){custom=clone(PRESETS[p.dataset.p]);buildFields();render();return}
+  const k=e.target.closest('[data-kind]');if(k){const st=custom.sets[+k.dataset.set];const def={anspannen:[5,5,10],atmen:[4,6,6],beides:[5,4,8]}[k.dataset.kind];
+    if(st.k!==k.dataset.kind){st.k=k.dataset.kind;[st.a,st.b,st.reps]=def}buildFields();render();return}
+  const r=e.target.closest('[data-rmset]');if(r){custom.sets.splice(+r.dataset.rmset,1);buildFields();render();return}
 });
-$('fields').addEventListener('change',e=>{const f=FIELDS.find(x=>x.k===e.target.dataset.k);if(!f)return;
-  cfg[f.k]=Math.max(f.min,Math.round(f.t==='time'?parse(e.target.value):+e.target.value||f.min));clearWorkout();syncInputs();render();});
-$('optLastRest').addEventListener('change',render);
+$('addSet').addEventListener('click',()=>{custom.sets.push(clone(custom.sets[custom.sets.length-1]||A('anspannen',5,5,10)));buildFields();render()});
+$('manual').addEventListener('change',e=>{const f=e.target.dataset.f;if(!f)return;setField(f,Math.round(parse(e.target.value)));e.target.value=getField(f);render()});
 
 /* ---- Audio / Vibration ---- */
 let ac=null;
@@ -383,7 +420,7 @@ function enter(i){
   const s=segs[i];const c=`var(${COLORS[s.type]})`;
   $('run').style.setProperty('--c',c);
   $('rPhase').textContent=s.label||NAMES[s.type];
-  const reps=s.reps||cfg.rounds,sets=s.sets||cfg.sets;
+  const reps=s.reps||1,sets=s.sets||1;
   $('rRound').textContent=s.type==='prep'?`–/${reps}`:`${s.round}/${reps}`;
   $('rSet').textContent=`${s.set}/${sets}`;
   const n=segs[i+1];
@@ -424,7 +461,7 @@ function finish(){running=false;cancelAnimationFrame(raf);
 function startSession(){sessionStart=new Date();logged=null;$('rSaved').textContent='';$('bIcs').hidden=true;enter(0);beep(880,.15);play();}
 $('startBtn').addEventListener('click',()=>{
   try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume()}catch(e){}
-  segs=segments();if(!segs.length)return;
+  workout=customWorkout();segs=segments(workout);if(!segs.length)return;
   $('setup').hidden=true;$('run').hidden=false;startSession();
 });
 $('bPlay').addEventListener('click',()=>{
@@ -510,7 +547,7 @@ $('logList').addEventListener('click',async e=>{
   if(b.dataset.act==='ics')exportIcs(en,b);
   if(b.dataset.act==='reuse'){
     if(en.blocks)applyWorkout({title:en.title,blocks:en.blocks,setRest:en.setRest||45});
-    else{workout=null;cfg={prep:cfg.prep,work:en.work,rest:en.rest,rounds:en.rounds,sets:en.sets,setRest:en.setRest};syncInputs();render();renderSurprise()}
+    else{surprise=null;renderSurprise()}
     showTab('timer');}
   if(b.dataset.act==='del'){
     if(b.dataset.confirm){try{await deleteEntry(en.id)}catch(err){b.textContent='Fehler beim Löschen'}}
@@ -612,16 +649,15 @@ function generate(level,hour){
   const title={Morgen:'Morgen-Programm',Mittags:'Mittags-Programm',Nachmittags:'Nachmittags-Programm',Abend:'Abend-Programm'}[day];
   return {title,blocks,setRest:level===1?30:20};
 }
-function applyWorkout(w){workout=w;render();renderSurprise();}
-function clearWorkout(){if(workout){workout=null;renderSurprise()}}
+function applyWorkout(w){surprise=w;renderSurprise();}
 function renderSurprise(){
-  const has=!!workout;
+  const has=!!surprise,workout=surprise;
   $('sxList').hidden=!has;$('sxStart').hidden=!has;
   $('sxGo').textContent=has?'Neu würfeln':'Überrasch mich';
   $('sxGo').classList.toggle('ghost',has);$('sxStart').classList.toggle('ghost',!has);
   if(!has){$('sxEyebrow').textContent='Überraschungs-Training';$('sxTitle').textContent='Lass dich überraschen';
     $('sxSub').textContent='Erst Atmung und Beckenboden getrennt, dann als Kombi. Jedes Mal neu zusammengestellt.';return}
-  const tot=segments().reduce((a,b)=>a+b.dur,0);
+  const tot=segments(surprise).reduce((a,b)=>a+b.dur,0);
   $('sxEyebrow').textContent='Dein Programm';$('sxTitle').textContent=workout.title;
   $('sxSub').textContent=`${fmt(tot)} Min · ${workout.blocks.length} Sätze · ${workout.setRest} s Pause dazwischen`;
   let lastPart='';
@@ -632,9 +668,12 @@ function renderLevel(){document.querySelectorAll('[data-lv]').forEach(b=>b.setAt
 function savePlan(){planDirty=true;try{localStorage.setItem('bbtimer-plan',JSON.stringify(plan))}catch(e){}
   clearTimeout(savePlan.t);savePlan.t=setTimeout(async()=>{try{if(dbCol)await dbCol.doc('plan').set({times:plan.times,days:plan.days,level:plan.level})}catch(e){}planDirty=false},800);}
 document.querySelectorAll('[data-lv]').forEach(b=>b.addEventListener('click',()=>{plan.level=+b.dataset.lv;renderLevel();savePlan();
-  if(workout)applyWorkout(generate(plan.level,new Date().getHours()))}));
+  if(surprise)applyWorkout(generate(plan.level,new Date().getHours()))}));
 $('sxGo').addEventListener('click',()=>applyWorkout(generate(plan.level,new Date().getHours())));
-$('sxStart').addEventListener('click',()=>$('startBtn').click());
+$('sxStart').addEventListener('click',()=>{if(!surprise)return;
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume()}catch(e){}
+  workout=surprise;segs=segments(workout);if(!segs.length)return;
+  renderSegList(segs);$('setup').hidden=true;$('run').hidden=false;startSession();});
 
 /* ---- Trainingsplan ---- */
 const DAYS=[['Mo',1],['Di',2],['Mi',3],['Do',4],['Fr',5],['Sa',6],['So',0]];
